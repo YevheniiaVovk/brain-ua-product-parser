@@ -50,6 +50,18 @@ def extract_color_from_title(title: str | None) -> str | None:
     return clean_text(match.group(1)) if match else None
 
 
+def first_visible(driver, xpath: str):
+    """Return the first displayed element matched by xpath, or None.
+
+    The site has duplicated blocks (two search fields, hidden product links),
+    so only the element the user can actually see must be used.
+    """
+    return next(
+        (element for element in driver.find_elements(By.XPATH, xpath) if element.is_displayed()),
+        None,
+    )
+
+
 def get_text(driver, xpath: str) -> str | None:
     """Return cleaned text of the first element matched by xpath, or None.
 
@@ -183,50 +195,35 @@ def main():
     try:
         print('[INFO] Connecting to running Chrome...')
         driver = webdriver.Chrome(options=options)
+
+        # Short wait for normal page loading, long wait for steps where
+        # a Cloudflare check may appear and must be solved manually.
         wait = WebDriverWait(driver, 10)
+        long_wait = WebDriverWait(driver, 180)
 
         # Step 1: Open main page
         print('[STEP 1] Opening https://brain.com.ua/')
         driver.get('https://brain.com.ua/')
 
         # Step 2: Enter search query into the visible search input
+        # (solve Cloudflare check manually in this tab if shown)
         print('[STEP 2] Entering search query')
-        query = 'Apple iPhone 15 128GB Black'
-        wait.until(
-            EC.presence_of_element_located((By.XPATH, "//input[@class='quick-search-input']"))
+        search_input = long_wait.until(
+            lambda d: first_visible(d, "//input[@class='quick-search-input']")
         )
-        search_inputs = driver.find_elements(By.XPATH, "//input[@class='quick-search-input']")
-        search_input = next((el for el in search_inputs if el.is_displayed()), None)
-        if search_input is None:
-            raise NoSuchElementException('Visible search input not found')
-        search_input.send_keys(query)
+        search_input.send_keys('Apple iPhone 15 128GB Black')
 
-        # Step 3: Wait until the quick-search popup receives the query, then click its search button
+        # Step 3: Click search button of the quick-search popup that opens while typing
         print('[STEP 3] Clicking search button')
-        wait.until(
-            lambda d: any(
-                el.get_attribute('value') == query
-                for el in d.find_elements(By.XPATH, "//input[@class='qsr-input']")
-            )
-        )
-        search_button = wait.until(
-            lambda d: next(
-                (el for el in d.find_elements(By.XPATH, "//input[@class='qsr-submit']") if el.is_displayed()),
-                None,
-            )
+        search_button = long_wait.until(
+            lambda d: first_visible(d, "//input[@class='qsr-submit']")
         )
         search_button.click()
 
         # Step 4: Wait for results (solve Cloudflare check manually if shown), click first visible product link
         print('[STEP 4] Waiting for search results...')
         results_xpath = "//div[contains(@class, 'view-grid')]//div[contains(@class, 'br-pp-img-grid')]/a"
-        WebDriverWait(driver, 180).until(
-            EC.presence_of_element_located((By.XPATH, results_xpath))
-        )
-        result_links = driver.find_elements(By.XPATH, results_xpath)
-        first_result = next((el for el in result_links if el.is_displayed()), None)
-        if first_result is None:
-            raise NoSuchElementException('No visible product link in search results')
+        first_result = long_wait.until(lambda d: first_visible(d, results_xpath))
         first_result.click()
 
         # Wait until the product page is loaded before parsing

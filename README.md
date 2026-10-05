@@ -26,7 +26,7 @@ and save it to PostgreSQL through the Django ORM.
 `specifications` (dict with all characteristics).
 
 Missing values are stored as `None`. Each record has `parser_source`
-(`requests_bs4`, `selenium` or `playwright`); `(product_code, parser_source)` is unique.
+(`requests_bs4`, `selenium` or `playwright`); 
 
 ## Tech stack
 

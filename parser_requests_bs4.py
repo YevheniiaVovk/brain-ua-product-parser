@@ -50,13 +50,6 @@ def parse_resolution(value: str | None) -> str | None:
     return match.group(0) if match else None
 
 
-def parse_dimensions(value: str | None) -> str | None:
-    """Remove units like 'мм', keep only numbers and x."""
-    if not value:
-        return None
-    return re.sub(r'\s*(мм|mm|дюйма|inches)\s*$', '', value, flags=re.IGNORECASE).strip()
-
-
 def parse_specs(soup: BeautifulSoup) -> dict:
     """
     Page structure:
@@ -84,16 +77,14 @@ def parse_specs(soup: BeautifulSoup) -> dict:
     return specs
 
 
-def load_json_ld(soup: BeautifulSoup) -> dict:
-    """Return the Product JSON-LD block, or an empty dict if there is none."""
-    for script in soup.find_all('script', attrs={'type': 'application/ld+json'}):
-        try:
-            data = json.loads(script.string or '')
-        except json.JSONDecodeError:
-            continue
-        if isinstance(data, dict) and data.get('@type') in ('Product', 'IndividualProduct'):
-            return data
-    return {}
+def parse_photos(soup: BeautifulSoup) -> list[str]:
+    """Return unique product photo links in page order."""
+    photos = []
+    for image in soup.select('img.br-main-img'):
+        link = image.get('src')
+        if link and link.startswith('http') and link not in photos:
+            photos.append(link)
+    return photos
 
 
 def extract_color_from_title(title: str | None) -> str | None:
@@ -110,8 +101,6 @@ def parse_product(url: str) -> dict:
     response.raise_for_status()
     soup = BeautifulSoup(response.text, 'html.parser')
 
-    json_ld = load_json_ld(soup)
-
     # --- TITLE ---
     title = None
     try:
@@ -119,20 +108,18 @@ def parse_product(url: str) -> dict:
     except AttributeError:
         pass
 
+    # --- SPECIFICATIONS ---
+    specs = parse_specs(soup)
+
+    # --- MANUFACTURER ---
+    manufacturer = specs.get('Виробник')
+
     # --- PRODUCT CODE ---
     product_code = None
     try:
         product_code = clean_text(soup.select_one('span.br-pr-code-val').get_text())
     except AttributeError:
         pass
-
-    # --- MANUFACTURER ---
-    manufacturer = None
-    brand = json_ld.get('brand')
-    if isinstance(brand, dict):
-        manufacturer = brand.get('name')
-    elif isinstance(brand, str):
-        manufacturer = brand
 
     # --- PRICES ---
     # Discontinued products keep a hidden price block in HTML,
@@ -152,9 +139,6 @@ def parse_product(url: str) -> dict:
             else:
                 price = parse_price(new_price_node)
 
-    # --- SPECIFICATIONS ---
-    specs = parse_specs(soup)
-
     # --- REVIEWS COUNT ---
     reviews_count = None
     try:
@@ -165,9 +149,7 @@ def parse_product(url: str) -> dict:
         pass
 
     # --- PHOTOS ---
-    photos = json_ld.get('image') or []
-    if isinstance(photos, str):
-        photos = [photos]
+    photos = parse_photos(soup)
 
     return {
         'title': title,
