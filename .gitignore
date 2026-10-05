@@ -36,6 +36,3 @@ test_chrome*.py
 .mypy_cache/
 .ruff_cache/
 
-# Tests
-test_read.py
-test_write.py

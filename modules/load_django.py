@@ -1,15 +1,14 @@
-# modules/load_django.py
 
 import os
 import sys
 import django
 
-# Додай шлях до проєкту
+# Path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__) + '/..'))
 
-# Налаштування Django
+# Setup Django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'parser_project.settings')
 django.setup()
 
-# Тепер можеш імпортувати моделі
+# Import models
 from parser_app.models import Product

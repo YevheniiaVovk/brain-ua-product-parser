@@ -7,7 +7,7 @@ services:
     restart: always
     environment:
       POSTGRES_DB: parser_db
-      POSTGRES_USER: parser_user
+      POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - "5434:5432"

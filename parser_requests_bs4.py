@@ -1,4 +1,3 @@
-import json
 import re
 from pprint import pprint
 
@@ -7,7 +6,6 @@ from bs4 import BeautifulSoup
 
 # Setup Django ORM context
 from modules.load_django import *
-from django.db import IntegrityError
 from parser_app.models import Product
 
 HEADERS = {
@@ -176,14 +174,7 @@ def save_to_db(data: dict, source: str = 'requests_bs4') -> None:
 
     data['parser_source'] = source
 
-    try:
-        product, created = Product.objects.get_or_create(**data)
-    except IntegrityError as error:
-        print(f'[ERROR] Integrity error: {error}')
-        return
-    except TypeError as error:
-        print(f'[ERROR] Type error: {error}')
-        return
+    product, created = Product.objects.get_or_create(**data)
 
     status = 'CREATED' if created else 'ALREADY EXISTS'
     print(f'[{status}] id={product.pk} (source: {source})')
