@@ -38,11 +38,3 @@ class Product(models.Model):
 
     def __str__(self):
         return self.title or f'Product ({self.product_code})'
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=['product_code', 'parser_source'],
-                name='unique_product_per_parser',
-            )
-        ]

@@ -156,12 +156,12 @@ def parse_product(driver) -> dict:
         'manufacturer': specs.get('Виробник'),
         'price': price,
         'sale_price': sale_price,
-        'photos': json.dumps(photos, ensure_ascii=False) if photos else None,
+        'photos': photos or None,
         'product_code': product_code,
         'reviews_count': parse_reviews_count(driver),
         'screen_diagonal': specs.get('Діагональ екрану'),
         'screen_resolution': parse_resolution(specs.get('Роздільна здатність екрану')),
-        'specifications': json.dumps(specs, ensure_ascii=False) if specs else None,
+        'specifications': specs or None,
     }
 
 
