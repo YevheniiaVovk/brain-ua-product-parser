@@ -17,7 +17,7 @@ class Product(models.Model):
     screen_diagonal = models.CharField(max_length=100, null=True, blank=True)
     screen_resolution = models.CharField(max_length=100, null=True, blank=True)
     specifications = models.TextField(null=True, blank=True)  # JSON словник
-    reviews_count = models.IntegerField(default=0)
+    reviews_count = models.IntegerField(null=True, blank=True)
     
     # --- Джерело даних ---
     PARSER_CHOICES = (
@@ -35,8 +35,6 @@ class Product(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
-    class Meta:
-        unique_together = ('product_code', 'parser_source')
     
     def __str__(self):
         return self.title or f"Product ({self.product_code})"

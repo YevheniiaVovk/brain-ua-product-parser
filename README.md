@@ -109,6 +109,7 @@ or with `psql`:
 ## Notes
 
 - Selenium and Playwright parsers use XPath only (no BeautifulSoup, no JSON-LD).
+- A record is created for every distinct set of values; identical data is not duplicated
 - Locators were chosen manually in DevTools and checked with Ctrl+F.
 - The site has duplicated blocks (two search fields, hidden product links), so visible elements are selected explicitly.
 - If Chrome closes immediately with `DevTools remote debugging is disallowed by the system admin`,

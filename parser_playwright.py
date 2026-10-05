@@ -63,8 +63,8 @@ async def parse_specs(page) -> dict:
     rows = page.locator("xpath=//div[contains(@class, 'br-pr-chr-item')]/div/div")
     for index in range(await rows.count()):
         row = rows.nth(index)
-        name_node = row.locator('xpath=./span[1]')
-        value_node = row.locator('xpath=./span[1]/following-sibling::span')
+        name_node = row.locator('xpath=./span[not(preceding-sibling::span)]')
+        value_node = row.locator('xpath=./span[preceding-sibling::span]')
         if await name_node.count() == 0 or await value_node.count() == 0:
             continue
 

@@ -69,8 +69,8 @@ def parse_specs(driver) -> dict:
     rows = driver.find_elements(By.XPATH, "//div[contains(@class, 'br-pr-chr-item')]/div/div")
     for row in rows:
         try:
-            name_node = row.find_element(By.XPATH, './span[1]')
-            value_node = row.find_element(By.XPATH, './span[1]/following-sibling::span')
+            name_node = row.find_element(By.XPATH, './span[not(preceding-sibling::span)]')
+            value_node = row.find_element(By.XPATH, './span[preceding-sibling::span]')
         except NoSuchElementException:
             continue
 
@@ -191,6 +191,7 @@ def main():
 
         # Step 2: Enter search query into the visible search input
         print('[STEP 2] Entering search query')
+        query = 'Apple iPhone 15 128GB Black'
         wait.until(
             EC.presence_of_element_located((By.XPATH, "//input[@class='quick-search-input']"))
         )
@@ -198,17 +199,27 @@ def main():
         search_input = next((el for el in search_inputs if el.is_displayed()), None)
         if search_input is None:
             raise NoSuchElementException('Visible search input not found')
-        search_input.send_keys('Apple iPhone 15 128GB Black')
+        search_input.send_keys(query)
 
-        # Step 3: Click search button next to the visible input
+        # Step 3: Wait until the quick-search popup receives the query, then click its search button
         print('[STEP 3] Clicking search button')
-        search_button = search_input.find_element(By.XPATH, "./following-sibling::input[@type='submit']")
-        wait.until(EC.element_to_be_clickable(search_button))
+        wait.until(
+            lambda d: any(
+                el.get_attribute('value') == query
+                for el in d.find_elements(By.XPATH, "//input[@class='qsr-input']")
+            )
+        )
+        search_button = wait.until(
+            lambda d: next(
+                (el for el in d.find_elements(By.XPATH, "//input[@class='qsr-submit']") if el.is_displayed()),
+                None,
+            )
+        )
         search_button.click()
 
         # Step 4: Wait for results (solve Cloudflare check manually if shown), click first visible product link
         print('[STEP 4] Waiting for search results...')
-        results_xpath = "//div[contains(@class, 'br-pp-ipd')]//a"
+        results_xpath = "//div[contains(@class, 'view-grid')]//div[contains(@class, 'br-pp-img-grid')]/a"
         WebDriverWait(driver, 180).until(
             EC.presence_of_element_located((By.XPATH, results_xpath))
         )

@@ -22,7 +22,7 @@ HEADERS = {
 
 URLS = [
     'https://brain.com.ua/ukr/Mobilniy_telefon_Apple_iPhone_16_Pro_Max_256GB_Black_Titanium-p1145443.html',
-    'https://brain.com.ua/ukr/Mobilniy_telefon_Apple_iPhone_Air_256GB_Space_Black_MG2L4-p1275001.html',
+    'https://brain.com.ua/ukr/Mobilniy_telefon_Apple_iPhone_16_128GB_Black-p1145393.html',
     'https://brain.com.ua/ukr/Mobilniy_telefon_Apple_iPhone_14_Pro_Max_128Gb_Deep_Purple_REF_A_BREEZY_2QMQ9T3-p1376515.html',
 ]
 
@@ -97,15 +97,11 @@ def load_json_ld(soup: BeautifulSoup) -> dict:
 
 
 def extract_color_from_title(title: str | None) -> str | None:
-    """Extract color from title, e.g. 'iPhone 16 Pro Max Black Titanium' -> 'Black Titanium'."""
+    """Extract color from title, e.g. '... 128GB Deep Purple (MTP03)' -> 'Deep Purple'."""
     if not title:
         return None
-    match = re.search(
-        r'\b(Black Titanium|Space Black|Deep Purple|Natural Titanium|White Titanium|Gold|Silver|Graphite)\b',
-        title,
-        re.IGNORECASE
-    )
-    return match.group(1) if match else None
+    match = re.search(r'\d+\s*(?:GB|TB)\s+([^()]+?)\s*\(', title, re.IGNORECASE)
+    return clean_text(match.group(1)) if match else None
 
 
 def parse_product(url: str) -> dict:
@@ -160,10 +156,12 @@ def parse_product(url: str) -> dict:
     specs = parse_specs(soup)
 
     # --- REVIEWS COUNT ---
-    reviews_count = 0
+    reviews_count = None
     try:
-        reviews_count = int(json_ld['aggregateRating']['reviewCount'])
-    except (KeyError, TypeError, ValueError):
+        reviews_count = int(
+            soup.select_one('a.reviews-count:not(.series-reviews) > span').get_text(strip=True)
+        )
+    except (AttributeError, ValueError):
         pass
 
     # --- PHOTOS ---
@@ -197,11 +195,7 @@ def save_to_db(data: dict, source: str = 'requests_bs4') -> None:
     data['parser_source'] = source
 
     try:
-        product, created = Product.objects.update_or_create(
-            product_code=product_code,
-            parser_source=source,
-            defaults=data
-        )
+        product, created = Product.objects.get_or_create(**data)
     except IntegrityError as error:
         print(f'[ERROR] Integrity error: {error}')
         return
@@ -209,7 +203,7 @@ def save_to_db(data: dict, source: str = 'requests_bs4') -> None:
         print(f'[ERROR] Type error: {error}')
         return
 
-    status = 'CREATED' if created else 'UPDATED'
+    status = 'CREATED' if created else 'ALREADY EXISTS'
     print(f'[{status}] id={product.pk} (source: {source})')
 
 
