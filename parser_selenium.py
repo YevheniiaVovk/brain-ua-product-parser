@@ -1,4 +1,3 @@
-import re
 from pprint import pprint
 
 from selenium import webdriver
@@ -14,38 +13,13 @@ from selenium.common.exceptions import (
 
 # Setup Django ORM context
 from modules.load_django import *
+from modules.utils import (
+    clean_text,
+    extract_color_from_title,
+    parse_price,
+    parse_resolution,
+)
 from parser_app.models import Product
-
-
-def clean_text(text: str | None) -> str:
-    """Replace non-breaking spaces and collapse whitespace."""
-    if not text:
-        return ''
-    return re.sub(r'\s+', ' ', text.replace('\xa0', ' ')).strip()
-
-
-def parse_price(value: str | None) -> int | None:
-    """Convert price text to int, e.g. '46 999' -> 46999."""
-    if not value:
-        return None
-    digits = re.sub(r'\D', '', value)
-    return int(digits) if digits else None
-
-
-def parse_resolution(value: str | None) -> str | None:
-    """Keep only 'WIDTH x HEIGHT', e.g. '1290 x 2796 pixels' -> '1290 x 2796'."""
-    if not value:
-        return None
-    match = re.search(r'\d+\s*[xх]\s*\d+', value)
-    return match.group(0) if match else None
-
-
-def extract_color_from_title(title: str | None) -> str | None:
-    """Extract color from title, e.g. '... 128GB Deep Purple (MTP03)' -> 'Deep Purple'."""
-    if not title:
-        return None
-    match = re.search(r'\d+\s*(?:GB|TB)\s+([^()]+?)\s*\(', title, re.IGNORECASE)
-    return clean_text(match.group(1)) if match else None
 
 
 def first_visible(driver, xpath: str):
@@ -97,7 +71,7 @@ def parse_specs(driver) -> dict:
 
 
 def parse_prices(driver) -> tuple[int | None, int | None]:
-    """Return (regular_price, sale_price). sale_price is None if there is no discount."""
+    """Return (regular_price, sale_price) relative to the price container."""
     archived = driver.find_elements(
         By.XPATH,
         "//div[contains(@class, 'main-right-block') and contains(@class, 'archived')]",
@@ -105,13 +79,28 @@ def parse_prices(driver) -> tuple[int | None, int | None]:
     if archived:
         return None, None
 
-    price_block = "//div[contains(@class, 'main-price-block')]"
-    current_price = parse_price(
-        get_text(driver, f"{price_block}//div[@class='br-pr-np']//div[@class='price-wrapper']/span")
-    )
-    old_price = parse_price(
-        get_text(driver, f"{price_block}//div[@class='br-pr-op']//div[@class='price-wrapper']/span")
-    )
+    
+    price_blocks = driver.find_elements(By.XPATH, "//div[contains(@class, 'main-price-block')]")
+    if not price_blocks:
+        return None, None
+    price_container = price_blocks[0]
+
+    
+    try:
+        current_price_node = price_container.find_element(
+            By.XPATH, ".//div[contains(@class, 'br-pr-np')]//div[contains(@class, 'price-wrapper')]/span"
+        )
+        current_price = parse_price(current_price_node.get_attribute('textContent'))
+    except NoSuchElementException:
+        current_price = None
+
+    try:
+        old_price_node = price_container.find_element(
+            By.XPATH, ".//div[contains(@class, 'br-pr-op')]//div[contains(@class, 'price-wrapper')]/span"
+        )
+        old_price = parse_price(old_price_node.get_attribute('textContent'))
+    except NoSuchElementException:
+        old_price = None
 
     if old_price is not None:
         return old_price, current_price
@@ -132,7 +121,7 @@ def parse_reviews_count(driver) -> int | None:
 def parse_photos(driver) -> list[str]:
     """Return unique product photo links in page order."""
     photos = []
-    for image in driver.find_elements(By.XPATH, "//img[@class='br-main-img']"):
+    for image in driver.find_elements(By.XPATH, "//img[contains(@class, 'br-main-img')]"):
         link = image.get_attribute('src')
         if link and link.startswith('http') and link not in photos:
             photos.append(link)
@@ -141,8 +130,8 @@ def parse_photos(driver) -> list[str]:
 
 def parse_product(driver) -> dict:
     """Parse product data from the opened product page using XPath only."""
-    title = get_text(driver, "//h1[@class='main-title']")
-    product_code = get_text(driver, "//span[@class='br-pr-code-val']")
+    title = get_text(driver, "//h1[contains(@class, 'main-title')]")
+    product_code = get_text(driver, "//span[contains(@class, 'br-pr-code-val')]")
     specs = parse_specs(driver)
     price, sale_price = parse_prices(driver)
     photos = parse_photos(driver)
@@ -187,8 +176,6 @@ def main():
         print('[INFO] Connecting to running Chrome...')
         driver = webdriver.Chrome(options=options)
 
-        # Short wait for normal page loading, long wait for steps where
-        # a Cloudflare check may appear and must be solved manually.
         wait = WebDriverWait(driver, 10)
         long_wait = WebDriverWait(driver, 180)
 
@@ -196,30 +183,35 @@ def main():
         print('[STEP 1] Opening https://brain.com.ua/')
         driver.get('https://brain.com.ua/')
 
-        # Step 2: Enter search query into the visible search input
-        # (solve Cloudflare check manually in this tab if shown)
+        # Step 2: Enter search query
         print('[STEP 2] Entering search query')
         search_input = long_wait.until(
-            lambda d: first_visible(d, "//input[@class='quick-search-input']")
+            lambda d: first_visible(d, "//input[contains(@class, 'quick-search-input')]")
         )
         search_input.send_keys('Apple iPhone 15 128GB Black')
 
-        # Step 3: Click search button of the quick-search popup that opens while typing
+        # Step 3: Click search button
         print('[STEP 3] Clicking search button')
         search_button = long_wait.until(
-            lambda d: first_visible(d, "//input[@class='qsr-submit']")
+            lambda d: first_visible(d, "//input[contains(@class, 'qsr-submit')]")
         )
         search_button.click()
 
-        # Step 4: Wait for results (solve Cloudflare check manually if shown), click first visible product link
+        # Step 4: Wait for results and click first product
         print('[STEP 4] Waiting for search results...')
         results_xpath = "//div[contains(@class, 'view-grid')]//div[contains(@class, 'br-pp-img-grid')]/a"
         first_result = long_wait.until(lambda d: first_visible(d, results_xpath))
         first_result.click()
 
-        # Wait until the product page is loaded before parsing
+        
         wait.until(
-            EC.presence_of_element_located((By.XPATH, "//span[@class='br-pr-code-val']"))
+            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'br-pr-chr-item')]"))
+        )
+        wait.until(
+            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'main-price-block')]"))
+        )
+        wait.until(
+            EC.presence_of_element_located((By.XPATH, "//span[contains(@class, 'br-pr-code-val')]"))
         )
 
         # Step 5-6: Parse and print

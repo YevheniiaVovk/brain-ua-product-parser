@@ -1,4 +1,3 @@
-import re
 from pprint import pprint
 
 import requests
@@ -6,6 +5,12 @@ from bs4 import BeautifulSoup
 
 # Setup Django ORM context
 from modules.load_django import *
+from modules.utils import (
+    clean_text,
+    extract_color_from_title,
+    parse_price,
+    parse_resolution,
+)
 from parser_app.models import Product
 
 HEADERS = {
@@ -23,29 +28,6 @@ URLS = [
     'https://brain.com.ua/ukr/Mobilniy_telefon_Apple_iPhone_16_128GB_Black-p1145393.html',
     'https://brain.com.ua/ukr/Mobilniy_telefon_Apple_iPhone_14_Pro_Max_128Gb_Deep_Purple_REF_A_BREEZY_2QMQ9T3-p1376515.html',
 ]
-
-
-def clean_text(text: str | None) -> str:
-    """Replace non-breaking spaces and collapse whitespace."""
-    if not text:
-        return ''
-    return re.sub(r'\s+', ' ', text.replace('\xa0', ' ')).strip()
-
-
-def parse_price(node) -> int | None:
-    """Convert text of ONE price node to int, e.g. '46 999' -> 46999."""
-    if node is None:
-        return None
-    digits = re.sub(r'\D', '', node.get_text())
-    return int(digits) if digits else None
-
-
-def parse_resolution(value: str | None) -> str | None:
-    """Keep only 'WIDTH x HEIGHT', e.g. '1290 x 2796 pixels' -> '1290 x 2796'."""
-    if not value:
-        return None
-    match = re.search(r'\d+\s*[xх]\s*\d+', value)  # latin x and cyrillic х
-    return match.group(0) if match else None
 
 
 def parse_specs(soup: BeautifulSoup) -> dict:
@@ -85,14 +67,6 @@ def parse_photos(soup: BeautifulSoup) -> list[str]:
     return photos
 
 
-def extract_color_from_title(title: str | None) -> str | None:
-    """Extract color from title, e.g. '... 128GB Deep Purple (MTP03)' -> 'Deep Purple'."""
-    if not title:
-        return None
-    match = re.search(r'\d+\s*(?:GB|TB)\s+([^()]+?)\s*\(', title, re.IGNORECASE)
-    return clean_text(match.group(1)) if match else None
-
-
 def parse_product(url: str) -> dict:
     """Parse a product page and extract all relevant data."""
     response = requests.get(url, headers=HEADERS, timeout=15)
@@ -120,8 +94,7 @@ def parse_product(url: str) -> dict:
         pass
 
     # --- PRICES ---
-    # Discontinued products keep a hidden price block in HTML,
-    # so the "archived" class must be checked first.
+    
     is_archived = soup.select_one('div.main-right-block.archived') is not None
     price = None
     sale_price = None
@@ -132,10 +105,10 @@ def parse_product(url: str) -> dict:
             old_price_node = price_block.select_one('div.br-pr-op div.price-wrapper > span')
             new_price_node = price_block.select_one('div.br-pr-np div.price-wrapper > span')
             if old_price_node is not None:
-                price = parse_price(old_price_node)
-                sale_price = parse_price(new_price_node)
+                price = parse_price(old_price_node.get_text() if old_price_node else None)
+                sale_price = parse_price(new_price_node.get_text() if new_price_node else None)
             else:
-                price = parse_price(new_price_node)
+                price = parse_price(new_price_node.get_text() if new_price_node else None)
 
     # --- REVIEWS COUNT ---
     reviews_count = None

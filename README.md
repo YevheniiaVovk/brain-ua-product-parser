@@ -26,7 +26,7 @@ and save it to PostgreSQL through the Django ORM.
 `specifications` (dict with all characteristics).
 
 Missing values are stored as `None`. Each record has `parser_source`
-(`requests_bs4`, `selenium` or `playwright`); 
+(`requests_bs4`, `selenium` or `playwright`).
 
 ## Tech stack
 
@@ -99,11 +99,10 @@ The scripts wait up to 3 minutes for the page.
 
 ## Export to CSV
 
-Export the `parser_app_product` table from the database (for example in DBeaver, with UTF-8 and BOM enabled),
-or with `psql`:
+To export all products from the database into a CSV file (products.csv), run:
 
 ```
-\copy parser_app_product TO 'parser_app_product.csv' CSV HEADER ENCODING 'UTF8'
+python export_csv.py
 ```
 
 ## Notes

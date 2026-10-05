@@ -1,5 +1,4 @@
 import asyncio
-import re
 from pprint import pprint
 
 from playwright.async_api import async_playwright
@@ -9,38 +8,13 @@ from asgiref.sync import sync_to_async
 
 # Setup Django ORM context
 from modules.load_django import *
+from modules.utils import (
+    clean_text,
+    extract_color_from_title,
+    parse_price,
+    parse_resolution,
+)
 from parser_app.models import Product
-
-
-def clean_text(text: str | None) -> str:
-    """Replace non-breaking spaces and collapse whitespace."""
-    if not text:
-        return ''
-    return re.sub(r'\s+', ' ', text.replace('\xa0', ' ')).strip()
-
-
-def parse_price(value: str | None) -> int | None:
-    """Convert price text to int, e.g. '46 999' -> 46999."""
-    if not value:
-        return None
-    digits = re.sub(r'\D', '', value)
-    return int(digits) if digits else None
-
-
-def parse_resolution(value: str | None) -> str | None:
-    """Keep only 'WIDTH x HEIGHT', e.g. '1290 x 2796 pixels' -> '1290 x 2796'."""
-    if not value:
-        return None
-    match = re.search(r'\d+\s*[xх]\s*\d+', value)
-    return match.group(0) if match else None
-
-
-def extract_color_from_title(title: str | None) -> str | None:
-    """Extract color from title, e.g. '... 128GB Deep Purple (MTP03)' -> 'Deep Purple'."""
-    if not title:
-        return None
-    match = re.search(r'\d+\s*(?:GB|TB)\s+([^()]+?)\s*\(', title, re.IGNORECASE)
-    return clean_text(match.group(1)) if match else None
 
 
 async def get_text(page, xpath: str) -> str | None:
@@ -79,20 +53,31 @@ async def parse_specs(page) -> dict:
 
 
 async def parse_prices(page) -> tuple[int | None, int | None]:
-    """Return (regular_price, sale_price). sale_price is None if there is no discount."""
+    """Return (regular_price, sale_price) relative to the price container."""
     archived = page.locator(
         "xpath=//div[contains(@class, 'main-right-block') and contains(@class, 'archived')]"
     )
     if await archived.count() > 0:
         return None, None
 
-    price_block = "//div[contains(@class, 'main-price-block')]"
-    current_price = parse_price(
-        await get_text(page, f"{price_block}//div[@class='br-pr-np']//div[@class='price-wrapper']/span")
+    
+    price_container = page.locator("xpath=//div[contains(@class, 'main-price-block')]").first
+    if await price_container.count() == 0:
+        return None, None
+
+   
+    current_price_node = price_container.locator(
+        "xpath=.//div[contains(@class, 'br-pr-np')]//div[contains(@class, 'price-wrapper')]/span"
     )
-    old_price = parse_price(
-        await get_text(page, f"{price_block}//div[@class='br-pr-op']//div[@class='price-wrapper']/span")
+    old_price_node = price_container.locator(
+        "xpath=.//div[contains(@class, 'br-pr-op')]//div[contains(@class, 'price-wrapper')]/span"
     )
+
+    current_price_text = await current_price_node.text_content() if await current_price_node.count() > 0 else None
+    old_price_text = await old_price_node.text_content() if await old_price_node.count() > 0 else None
+
+    current_price = parse_price(current_price_text)
+    old_price = parse_price(old_price_text)
 
     if old_price is not None:
         return old_price, current_price
@@ -113,7 +98,7 @@ async def parse_reviews_count(page) -> int | None:
 async def parse_photos(page) -> list[str]:
     """Return unique product photo links in page order."""
     photos = []
-    images = page.locator("xpath=//img[@class='br-main-img']")
+    images = page.locator("xpath=//img[contains(@class, 'br-main-img')]")
     for index in range(await images.count()):
         link = await images.nth(index).get_attribute('src')
         if link and link.startswith('http') and link not in photos:
@@ -123,8 +108,8 @@ async def parse_photos(page) -> list[str]:
 
 async def parse_product(page) -> dict:
     """Parse product data from the opened product page using XPath only."""
-    title = await get_text(page, "//h1[@class='main-title']")
-    product_code = await get_text(page, "//span[@class='br-pr-code-val']")
+    title = await get_text(page, "//h1[contains(@class, 'main-title')]")
+    product_code = await get_text(page, "//span[contains(@class, 'br-pr-code-val')]")
     specs = await parse_specs(page)
     price, sale_price = await parse_prices(page)
     photos = await parse_photos(page)
@@ -176,27 +161,32 @@ async def main():
             await page.goto('https://brain.com.ua/', wait_until='load')
 
             # Step 2: Enter search query into the visible search input
-            # (solve Cloudflare check manually in this tab if shown)
             print('[STEP 2] Entering search query')
             search_input = page.locator(
-                "xpath=//input[@class='quick-search-input'] >> visible=true"
+                "xpath=//input[contains(@class, 'quick-search-input')] >> visible=true"
             ).first
             await search_input.fill('Apple iPhone 15 128GB Black', timeout=180000)
 
             # Step 3: Click search button of the quick-search popup that opens while typing
             print('[STEP 3] Clicking search button')
-            search_button = page.locator("xpath=//input[@class='qsr-submit'] >> visible=true").first
+            search_button = page.locator("xpath=//input[contains(@class, 'qsr-submit')] >> visible=true").first
             await search_button.click()
 
-            # Step 4: Wait for results (solve Cloudflare check manually if shown), click first visible product link
+            # Step 4: Wait for results, click first visible product link
             print('[STEP 4] Waiting for search results...')
             first_result = page.locator(
                 "xpath=//div[contains(@class, 'view-grid')]//div[contains(@class, 'br-pp-img-grid')]/a >> visible=true"
             ).first
             await first_result.click(timeout=180000)
 
-            # Wait until the product page is loaded before parsing
-            await page.locator("xpath=//span[@class='br-pr-code-val']").first.wait_for(
+            
+            await page.locator("xpath=//div[contains(@class, 'br-pr-chr-item')]").first.wait_for(
+                state='attached', timeout=10000
+            )
+            await page.locator("xpath=//div[contains(@class, 'main-price-block')]").first.wait_for(
+                state='attached', timeout=10000
+            )
+            await page.locator("xpath=//span[contains(@class, 'br-pr-code-val')]").first.wait_for(
                 state='attached', timeout=10000
             )
 

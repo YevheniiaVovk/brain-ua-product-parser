@@ -1,8 +1,7 @@
-
 from modules.load_django import *
 from parser_app.models import Product
 
-# Створи тестовий товар
+# Create test product
 product = Product.objects.create(
     title="Test iPhone 15",
     color="Black",
@@ -13,7 +12,7 @@ product = Product.objects.create(
     reviews_count=42
 )
 
-print("✅ Товар записаний в БД:")
+print("✅ Added:")
 print(f"ID: {product.id}")
-print(f"Назва: {product.title}")
-print(f"Ціна: {product.price}")
+print(f"Title: {product.title}")
+print(f"Price: {product.price}")
